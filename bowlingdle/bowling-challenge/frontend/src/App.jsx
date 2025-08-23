@@ -1,6 +1,7 @@
 import React from 'react';
 import { useDailyChallenge } from './hooks/useDailyChallenge';
-import VideoPlayer from './components/VideoPlayer';
+import BowlingMP4Player from './components/BowlingMP4Player';
+// DEPRECATED import BowlingVideoPlayer from './components/BowlingVideoPlayer';
 import GuessPanel from './components/GuessPanel';
 import PinSelector from './components/PinSelector';
 import ScoreBoard from './components/ScoreBoard';
@@ -11,25 +12,28 @@ function App() {
     loading,
     error,
     gameState,
-    submitGuess,
-    nextAttempt
+    submitStrikeGuess,
+    submitPinsGuess
   } = useDailyChallenge();
 
-  const handleGuess = async (guess) => {
-    const result = await submitGuess(guess);
-    
-    // If incorrect and not complete, show next attempt after delay
-    if (result && !result.correct && !gameState.isComplete) {
-      setTimeout(() => {
-        nextAttempt();
-      }, 3000);
-    }
+  const handleStrikeGuess = async (guess) => {
+    await submitStrikeGuess(guess);
   };
 
   const handlePinsSelected = (pins) => {
-    // This would be used for bonus points or verification
-    console.log('Selected pins:', pins);
+    // Just for debugging
+    console.log('User selected pins:', pins);
   };
+
+  const handlePinsSubmit = (pins) => {
+    submitPinsGuess(pins);
+  };
+
+  const handleVideoPhaseComplete = (completedPhase) => {
+    // Video phase completed, but don't auto-advance game state
+    console.log(`Video phase ${completedPhase} completed`);
+  };
+
 
   if (loading) {
     return (
@@ -79,58 +83,106 @@ function App() {
         <div className="max-w-4xl mx-auto grid gap-6 lg:grid-cols-3">
           {/* Main game area */}
           <div className="lg:col-span-2 space-y-6">
-            <VideoPlayer
-              videoId={challenge.videoId}
-              freezeFrame={challenge.freezeFrame}
-              showResult={gameState.showResult}
-            />
+          // Change this line in your VideoPlayer usage:
+            {
 
-            {!gameState.isComplete && (
+              /* DEPRECATED YOUTUBE PLAYER
+               <BowlingVideoPlayer
+                videoId={challenge.videoId}
+                startTime={challenge.startTime}
+                freezeTime={challenge.freezeTime}
+                endTime={challenge.endTime}
+                phase={gameState.videoPhase}
+                onPhaseComplete={handleVideoPhaseComplete}
+              /> */
+
+              <BowlingMP4Player
+                src={`/videos/${challenge.videoId}.mp4`}
+                startTime={challenge.startTime}
+                freezeTime={challenge.freezeTime}
+                endTime={challenge.endTime}
+                phase={gameState.videoPhase}
+                onPhaseComplete={handleVideoPhaseComplete}
+              />
+
+
+            }
+
+            {/* Strike/Not Strike buttons */}
+            {gameState.phase === 'guess' && (
               <GuessPanel
-                onGuess={handleGuess}
-                disabled={gameState.showResult}
-                showResult={gameState.showResult}
-                currentGuess={gameState.currentGuess}
+                onGuess={handleStrikeGuess}
+                disabled={false}
+                showResult={false}
+                currentGuess={null}
               />
             )}
 
-            {/* Show pin selector if it's not a strike */}
-            {challenge.standingPins && gameState.showResult && (
-              <PinSelector
-                standingPins={challenge.standingPins}
-                onPinsSelected={handlePinsSelected}
-                disabled={gameState.isComplete}
-              />
-            )}
-
-            {gameState.showResult && !gameState.isComplete && (
-              <div className="text-center p-4 bg-yellow-100 rounded-lg">
-                <p className="text-yellow-800">
-                  {gameState.currentGuess === challenge.answer?.toLowerCase()
-                    ? '🎉 Correct!'
-                    : '❌ Incorrect. Try again in a moment...'}
+            {/* Show strike result */}
+            {gameState.phase !== 'guess' && (
+              <div className={`text-center p-6 rounded-lg ${gameState.strikeCorrect
+                ? 'bg-green-100 border-2 border-green-300'
+                : 'bg-red-100 border-2 border-red-300'
+                }`}>
+                <div className="text-xl font-bold mb-2">
+                  Your guess: <span className="capitalize">{gameState.strikeGuess.replace('_', ' ')}</span>
+                </div>
+                <div className="text-lg mb-2">
+                  Correct answer: <span className="capitalize font-bold">
+                    {gameState.revealedAnswer.replace('_', ' ')}
+                  </span>
+                </div>
+                <p className={`text-lg ${gameState.strikeCorrect ? 'text-green-700' : 'text-red-700'}`}>
+                  {gameState.strikeCorrect ? 'Nice one! What pins were standing!' : '❌ Wrong, but you can still earn partial credit!'}
                 </p>
               </div>
+            )}
+
+            {/* Pin selector for non-strike results */}
+            {gameState.phase === 'pins' && gameState.standingPins && (
+              <PinSelector
+                onPinsSelected={handlePinsSelected}
+                onSubmit={handlePinsSubmit}
+                disabled={false}
+                showAnswer={false}
+                correctPins={null}
+                userGuess={null}
+                isComplete={false}
+              />
+            )}
+
+            {/* Show final pin results */}
+            {gameState.phase === 'complete' && gameState.standingPins && gameState.pinsGuess.length > 0 && (
+              <PinSelector
+                onPinsSelected={() => { }}
+                onSubmit={() => { }}
+                disabled={true}
+                showAnswer={true}
+                correctPins={gameState.standingPins}
+                userGuess={gameState.pinsGuess}
+                isComplete={true}
+              />
             )}
           </div>
 
           {/* Sidebar */}
           <div className="space-y-6">
-            <ScoreBoard
-              attempts={gameState.attempts}
-              points={gameState.points}
-              isComplete={gameState.isComplete}
-            />
+            <ScoreBoard gameState={gameState} />
 
-            {gameState.isComplete && (
+            {gameState.phase === 'complete' && (
               <div className="bg-white rounded-lg shadow-md p-6 text-center">
                 <h3 className="text-lg font-bold mb-2">Challenge Complete!</h3>
                 <p className="text-gray-600 text-sm mb-4">
                   Come back tomorrow for a new challenge
                 </p>
                 <div className="text-xs text-gray-500">
-                  Share your score: {gameState.points} points in {gameState.attempts} attempts
+                  Final Score: {gameState.score}/100
                 </div>
+                {gameState.standingPins && gameState.pinsGuess.length > 0 && (
+                  <div className="text-xs text-gray-500 mt-1">
+                    Pins: {gameState.pinsScore}/{gameState.standingPins.length} correct
+                  </div>
+                )}
               </div>
             )}
           </div>
